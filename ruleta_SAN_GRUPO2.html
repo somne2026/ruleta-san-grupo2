@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#25324a">
+<title>Ruleta SAN - Grupo 2</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;min-height:100%;font-family:Arial,sans-serif;color:#172033}
+body{background:linear-gradient(135deg,#f7f9fc,#eef2f7);padding:20px}
+.app{max-width:900px;margin:auto}
+.box{background:rgba(255,255,255,.97);border-radius:18px;padding:20px;margin-bottom:18px;box-shadow:0 4px 18px rgba(0,0,0,.12)}
+h1{text-align:center;margin:4px 0 8px;font-size:clamp(27px,6vw,38px)}
+.sub{text-align:center;color:#667085;margin:0 0 20px}
+.grid{display:grid;grid-template-columns:1fr 1.2fr;gap:24px}
+button,select{font-size:17px;padding:13px;border-radius:10px;border:1px solid #ccd3df;background:white;width:100%;margin:6px 0;cursor:pointer;min-height:48px}
+button:hover{background:#eef2ff}
+.spin{font-weight:bold;background:#dfe6ff;color:#172033}
+.spin:disabled{opacity:.45;cursor:not-allowed}
+.wheel-area{display:flex;flex-direction:column;align-items:center}
+.pointer{width:0;height:0;border-left:16px solid transparent;border-right:16px solid transparent;border-top:32px solid #25324a;margin:0 auto -2px;position:relative;z-index:5;filter:drop-shadow(0 2px 2px rgba(0,0,0,.2))}
+.wheel{width:min(82vw,380px);height:min(82vw,380px);max-width:380px;max-height:380px;border-radius:50%;margin:0 auto 15px;border:9px solid #25324a;position:relative;transition:transform 4s cubic-bezier(.12,.75,.18,1);background:conic-gradient(#FF1493 0deg 32.727deg,#FFB6C1 32.727deg 65.454deg,#8A2BE2 65.454deg 98.181deg,#007BFF 98.181deg 130.908deg,#28A745 130.908deg 163.635deg,#FFD700 163.635deg 196.362deg,#FF8C00 196.362deg 229.089deg,#DC143C 229.089deg 261.816deg,#40E0D0 261.816deg 294.543deg,#FFB6C1 294.543deg 327.27deg,#FF1493 327.27deg 360deg);overflow:hidden;box-shadow:0 5px 18px rgba(0,0,0,.2)}
+.num{position:absolute;left:50%;top:50%;width:42px;height:42px;margin-left:-21px;margin-top:-21px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.9);color:#172033;font-size:20px;font-weight:bold;border:2px solid rgba(37,50,74,.5)}
+.center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;border:5px solid #25324a;z-index:2;font-size:10px;font-weight:bold;text-align:center}
+.result{text-align:center;font-size:24px;font-weight:bold;min-height:60px;padding:12px}
+.small{font-size:14px;color:#667085;line-height:1.5}
+.assigned{display:flex;justify-content:space-between;align-items:center;padding:10px;border-bottom:1px solid #eee}
+.available-number{display:inline-block;padding:7px 11px;margin:3px;border:1px solid #ccd3df;border-radius:50%;font-weight:bold}
+.reserved{font-size:12px;color:#667085;margin-top:8px}
+@media(max-width:700px){
+ body{padding:10px}.box{padding:15px;border-radius:15px}.grid{grid-template-columns:1fr;gap:14px}
+ .wheel{width:min(82vw,330px);height:min(82vw,330px)}
+ .num{font-size:17px;width:36px;height:36px;margin-left:-18px;margin-top:-18px}
+ .center{width:56px;height:56px;font-size:9px}.result{font-size:20px}
+}
+@media(max-width:380px){
+ .wheel{width:275px;height:275px}.num{font-size:15px;width:32px;height:32px;margin-left:-16px;margin-top:-16px}
+ .center{width:50px;height:50px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="box">
+    <h1>🎡 Ruleta SAN · Grupo 2</h1>
+    <p class="sub">Asignación de turnos · 11 participantes</p>
+  </div>
+
+  <div class="grid">
+    <div class="box">
+      <h2>👥 Participantes</h2>
+      <select id="person">
+        <option value="">Selecciona quién va a girar</option>
+      </select>
+      <div id="status" class="small"></div>
+
+      <h3>🔢 Números disponibles</h3>
+      <div id="numbers"></div>
+      <div class="reserved">🌸 #1 reservado para SOMNE · #11 disponible para sorteo</div>
+    </div>
+
+    <div class="box">
+      <div class="wheel-area">
+        <div class="pointer"></div>
+        <div id="wheel" class="wheel">
+          <div id="numberLabels"></div>
+          <div class="center">SAN</div>
+        </div>
+        <button id="spin" class="spin" disabled>🎯 GIRAR RULETA</button>
+        <div id="result" class="result">Selecciona una persona.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>📋 Resultado</h2>
+    <div id="list"></div>
+  </div>
+</div>
+
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {
+  getFirestore,
+  doc,
+  runTransaction,
+  onSnapshot
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBMhSwB4X6_b3ZNY9UemVQpPT_jmSg34",
+  authDomain: "ruleta-san.firebaseapp.com",
+  projectId: "ruleta-san",
+  storageBucket: "ruleta-san.firebasestorage.app",
+  messagingSenderId: "1030901829268",
+  appId: "1:1030901829268:web:01a7250e283a428fd7ee81"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const stateRef = doc(db, "ruleta_grupo2", "estado");
+
+const participants=["SOMNE","BISMARK","ROSSY","YONELVI","ELIAS","LILI","MAXIMO","LELIA","SCARLET","OTRO-1","OTRO-2"];
+const nums=[2,3,4,5,6,7,8,9,10,11];
+
+const colorMap={
+  1:"🌸 Fucsia",2:"🩷 Rosado",3:"🟣 Morado",4:"💙 Azul",5:"💚 Verde",
+  6:"💛 Amarillo",7:"🧡 Naranja",8:"❤️ Rojo",9:"🩵 Turquesa",
+  10:"🩷 Rosado",11:"🌸 Fucsia"
+};
+
+const bgColorMap={
+  1:"#FF1493",2:"#FFB6C1",3:"#8A2BE2",4:"#007BFF",5:"#28A745",
+  6:"#FFD700",7:"#FF8C00",8:"#DC143C",9:"#40E0D0",10:"#FFB6C1",11:"#FF1493"
+};
+
+const person=document.getElementById("person");
+const spin=document.getElementById("spin");
+const wheel=document.getElementById("wheel");
+const numberLabels=document.getElementById("numberLabels");
+const result=document.getElementById("result");
+const list=document.getElementById("list");
+const numbers=document.getElementById("numbers");
+const status=document.getElementById("status");
+
+let assignments={SOMNE:1};
+let used=[];
+let selected="";
+let rotation=0;
+let busy=false;
+let ready=false;
+
+participants.forEach(p=>{
+  const o=document.createElement("option");
+  o.value=p;
+  o.textContent=p;
+  person.appendChild(o);
+});
+
+const allWheelNumbers=[1,2,3,4,5,6,7,8,9,10,11];
+const segment=360/allWheelNumbers.length;
+
+allWheelNumbers.forEach((n,i)=>{
+  const e=document.createElement("span");
+  e.className="num";
+  e.textContent=n;
+  const angle=i*segment+segment/2;
+  const radius=145;
+  e.style.transform=`rotate(${angle}deg) translateY(-${radius}px)`;
+  numberLabels.appendChild(e);
+});
+
+function render(){
+  numbers.innerHTML=nums
+    .filter(n=>!used.includes(n))
+    .map(n=>`<span class="available-number" style="background:${bgColorMap[n]};color:${n===6?'#222':'white'}">${n}</span>`)
+    .join("");
+
+  list.innerHTML=participants.map(p=>{
+    const value=assignments[p];
+    return `<div class="assigned"><span>${p}</span><b>${value ? "#"+value : "Pendiente"}</b></div>`;
+  }).join("");
+
+  person.querySelectorAll("option").forEach(o=>{
+    if(o.value) o.disabled=!!assignments[o.value];
+  });
+
+  if(selected && assignments[selected]){
+    spin.disabled=true;
+    status.textContent=`${selected} ya tiene el número #${assignments[selected]}.`;
+  }
+}
+
+function applyState(data){
+  assignments = data.assignments || {SOMNE:1};
+  used = Array.isArray(data.used) ? data.used : Object.values(assignments).filter(n=>n>=2 && n<=10);
+  render();
+
+  ready=true;
+
+  if(!selected){
+    spin.disabled=true;
+    if(used.length===nums.length) {
+      result.textContent="🎊 El sorteo ha finalizado.";
+    } else if(!result.textContent || result.textContent.includes("Conectando")) {
+      result.textContent="Selecciona una persona.";
+    }
+  }
+}
+
+async function ensureState(){
+  await runTransaction(db, async tx=>{
+    const snap=await tx.get(stateRef);
+    const data=snap.exists() ? snap.data() : {};
+    const currentAssignments=data.assignments || {};
+    const normalized={...currentAssignments};
+    if(!normalized.SOMNE) normalized.SOMNE=1;
+
+    const currentUsed=Array.isArray(data.used)
+      ? data.used.filter(n=>nums.includes(n))
+      : Object.values(normalized).filter(n=>nums.includes(n));
+
+    const changes = !snap.exists()
+      || !data.assignments
+      || !data.used;
+
+    if(changes){
+      tx.set(stateRef,{
+        activa:"prueba",
+        assignments:normalized,
+        used:[...new Set(currentUsed)]
+      },{merge:true});
+    }
+  });
+}
+
+person.addEventListener("change",()=>{
+  selected=person.value;
+
+  if(!selected){
+    spin.disabled=true;
+    status.textContent="";
+    result.textContent="Selecciona una persona.";
+    return;
+  }
+
+  if(assignments[selected]){
+    spin.disabled=true;
+    status.textContent=`${selected} tiene reservado el número #${assignments[selected]}.`;
+    result.textContent=`${selected} ya tiene el número #${assignments[selected]}.`;
+    return;
+  }
+
+  if(!ready){
+    spin.disabled=true;
+    status.textContent="Conectando con la ruleta compartida...";
+    result.textContent="Conectando...";
+    return;
+  }
+
+  if(used.length>=nums.length){
+    spin.disabled=true;
+    result.textContent="🎊 El sorteo ha finalizado.";
+    return;
+  }
+
+  status.textContent=`Turno de ${selected}. Presiona el botón para girar.`;
+  result.textContent=`${selected} está listo/a para girar.`;
+  spin.disabled=busy;
+});
+
+spin.addEventListener("click",async ()=>{
+  if(busy || !selected || assignments[selected] || !ready) return;
+
+  const personWhoSpins=selected;
+  busy=true;
+  spin.disabled=true;
+  status.textContent="🎡 Girando...";
+
+  try{
+    let chosen;
+
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(stateRef);
+      const data=snap.data() || {};
+      const currentAssignments={...(data.assignments || {})};
+      const currentUsed=Array.isArray(data.used) ? [...data.used] : [];
+
+      if(currentAssignments[personWhoSpins]){
+        throw new Error("PERSON_ALREADY_ASSIGNED");
+      }
+
+      const available=nums.filter(n=>!currentUsed.includes(n));
+      if(!available.length) throw new Error("NO_NUMBERS");
+
+      chosen=available[Math.floor(Math.random()*available.length)];
+      currentAssignments[personWhoSpins]=chosen;
+      currentUsed.push(chosen);
+
+      tx.set(stateRef,{
+        activa:"prueba",
+        assignments:currentAssignments,
+        used:[...new Set(currentUsed)]
+      },{merge:true});
+    });
+
+    const index=allWheelNumbers.indexOf(chosen);
+    const targetAngle=-(index*segment+segment/2);
+    const current=rotation%360;
+    let difference=targetAngle-current;
+    while(difference<0) difference+=360;
+    rotation+=360*5+difference;
+    wheel.style.transform=`rotate(${rotation}deg)`;
+
+    await new Promise(resolve=>setTimeout(resolve,4200));
+
+    result.innerHTML=`
+      <div style="background:${bgColorMap[chosen]};color:${chosen===6?'#222':'white'};padding:20px;border-radius:15px;font-size:27px;font-weight:bold;box-shadow:0 4px 15px rgba(0,0,0,.2)">
+        🎉 ${personWhoSpins}<br>
+        ERES EL NÚMERO ${chosen}<br>
+        <span style="font-size:18px">${colorMap[chosen]}</span>
+      </div>`;
+
+    selected="";
+    person.value="";
+    status.textContent="";
+    busy=false;
+    spin.disabled=true;
+
+    if(used.length===nums.length){
+      result.innerHTML+=`<div style="font-size:16px;margin-top:10px;padding:10px">🎊 ¡SORTEO COMPLETADO!</div>`;
+    }
+
+  }catch(error){
+    busy=false;
+    spin.disabled=false;
+
+    if(error.message==="PERSON_ALREADY_ASSIGNED"){
+      result.textContent=`⚠️ ${personWhoSpins} ya realizó su turno en otro dispositivo.`;
+      status.textContent="El resultado compartido ya está registrado.";
+    }else if(error.message==="NO_NUMBERS"){
+      result.textContent="🎊 El sorteo ha finalizado.";
+    }else{
+      console.error(error);
+      result.textContent="⚠️ No se pudo registrar el giro. Revisa la conexión e inténtalo nuevamente.";
+      status.textContent="Error de conexión con Firebase.";
+    }
+  }
+});
+
+onSnapshot(stateRef,(snap)=>{
+  if(snap.exists()){
+    applyState(snap.data());
+  }
+},(error)=>{
+  console.error(error);
+  ready=false;
+  status.textContent="⚠️ No se pudo conectar con Firebase.";
+  result.textContent="Verifica la conexión a Internet.";
+});
+
+(async()=>{
+  try{
+    await ensureState();
+  }catch(error){
+    console.error(error);
+    status.textContent="⚠️ Error al preparar la ruleta compartida.";
+    result.textContent="No se pudo conectar con Firebase.";
+  }
+})();
+</script>
+
+</body>
+</html>
